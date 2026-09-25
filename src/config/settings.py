@@ -12,7 +12,8 @@ except ImportError:  # pragma: no cover - dotenv optional at import time
     def load_dotenv(*args, **kwargs):  # type: ignore[no-redef]
         return False
 
-load_dotenv()
+_PROJECT_ENV = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(_PROJECT_ENV)  # explicit path: never rely on cwd discovery
 
 _BASE_DIR = Path(__file__).resolve().parents[2]
 
