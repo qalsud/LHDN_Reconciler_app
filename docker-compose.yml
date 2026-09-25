@@ -1,0 +1,28 @@
+services:
+  reconciler:
+    build: .
+    container_name: lhdn-reconciler
+    volumes:
+      - ./samples:/app/samples:ro
+      - ./output:/app/output
+    env_file:
+      - .env
+    command:
+      - --gl-path
+      - samples/gl_sample.csv
+      - --lhdn-path
+      - samples/lhdn_sample.json
+      - --output
+      - output/reconciliation_summary.xlsx
+
+  ui:
+    build: .
+    container_name: lhdn-reconciler-ui
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./samples:/app/samples:ro
+      - ./output:/app/output
+    env_file:
+      - .env
+    entrypoint: ["streamlit", "run", "app.py", "--server.address=0.0.0.0"]

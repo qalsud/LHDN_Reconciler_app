@@ -1,0 +1,76 @@
+{
+  "documents": [
+    {
+      "uuid": "a3b1799d-0001-4e5f-8000-06671c80317f",
+      "supplierTIN": "C12345678010",
+      "invoiceDate": "2026-08-01",
+      "invoiceNo": "INV-2026-0001",
+      "sstAmount": 600.0,
+      "totalAmount": 10600.0
+    },
+    {
+      "uuid": "bdd640fb-0002-4e5f-8000-3eb146685257",
+      "supplierTIN": "C98765432010",
+      "invoiceDate": "2026-08-02",
+      "invoiceNo": "INV-2026-0002",
+      "sstAmount": 1500.0,
+      "totalAmount": 26500.0
+    },
+    {
+      "uuid": "392456de-0003-4e5f-8000-bc8923b8c1e9",
+      "supplierTIN": "C55566677010",
+      "invoiceDate": "2026-08-03",
+      "invoiceNo": "INV-2026-0003",
+      "sstAmount": 480.0,
+      "totalAmount": 8480.0
+    },
+    {
+      "uuid": "1a3d1fa7-0004-4e5f-8000-bd9cad3c2d6d",
+      "supplierTIN": "C12345678010",
+      "invoiceDate": "2026-08-04",
+      "invoiceNo": "INV-2026-0004",
+      "sstAmount": 720.0,
+      "totalAmount": 12720.03
+    },
+    {
+      "uuid": "e465e150-0005-4e5f-8000-16418b9d2434",
+      "supplierTIN": "C98765432010",
+      "invoiceDate": "2026-08-05",
+      "invoiceNo": "INV-2026-0005",
+      "sstAmount": 1000.0,
+      "totalAmount": 21000.0
+    },
+    {
+      "uuid": "972a8469-0006-4e5f-8000-08226c031199",
+      "supplierTIN": "C12345678010",
+      "invoiceDate": "2026-08-07",
+      "invoiceNo": "INV-2026-0006-MYINVOIS",
+      "sstAmount": 900.0,
+      "totalAmount": 15900.0
+    },
+    {
+      "uuid": "07a0ca6e-0007-4e5f-8000-37f817fc695a",
+      "supplierTIN": "C55566677010",
+      "invoiceDate": "2026-08-08",
+      "invoiceNo": "INV-2026-0007",
+      "sstAmount": 300.0,
+      "totalAmount": 5300.0
+    },
+    {
+      "uuid": "3b8faa18-0008-4e5f-8000-9a1d815ef6d1",
+      "supplierTIN": "C98765432010",
+      "invoiceDate": "2026-08-09",
+      "invoiceNo": "INV-2026-0008",
+      "sstAmount": 570.0,
+      "totalAmount": 10070.0
+    },
+    {
+      "uuid": "06cb0fb3-0999-4e5f-8000-32e78fadc1a6",
+      "supplierTIN": "C00011122010",
+      "invoiceDate": "2026-08-12",
+      "invoiceNo": "INV-2026-0999",
+      "sstAmount": 240.0,
+      "totalAmount": 4240.0
+    }
+  ]
+}
