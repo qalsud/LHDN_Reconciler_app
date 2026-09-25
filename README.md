@@ -110,9 +110,35 @@ python main.py --gl-path samples/gl_sample.csv --lhdn-path samples/lhdn_sample.j
 cp .env.example .env
 docker compose up --build reconciler   # CLI run, workbook -> output/
 docker compose up --build ui           # web UI on http://localhost:8501
+docker compose up --build api          # REST API on http://localhost:8000
 ```
 
-## UI walkthrough (`streamlit run app.py`)
+## API service (FastAPI, :8000)
+
+```bash
+uvicorn src.api.app:app --reload --port 8000
+# interactive docs: http://localhost:8000/docs
+```
+
+```bash
+# Health
+curl http://localhost:8000/health
+
+# Reconcile (multipart upload; tolerances + ai_narratives optional)
+curl -X POST http://localhost:8000/api/v1/reconcile \
+  -F gl_file=@samples/gl_sample.csv \
+  -F lhdn_file=@samples/lhdn_sample.json \
+  -F date_tolerance=2 -F amount_tolerance=0.05 -F sst_tolerance=0.05
+
+# Fetch run detail + workbook (run_id from the POST response)
+curl http://localhost:8000/api/v1/runs/<run_id>
+curl -OJ http://localhost:8000/api/v1/runs/<run_id>/workbook
+```
+
+Notes: runs live in a bounded in-memory store (100 latest; Postgres lands
+in the persistence phase — service code depends only on the
+`RunRepository` protocol). No auth yet; that ships with multi-tenancy.
+`ai_narratives=true` uses the configured LLM key, off by default.
 
 ## UI walkthrough (`streamlit run app.py`)
 

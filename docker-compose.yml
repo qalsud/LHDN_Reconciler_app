@@ -26,3 +26,15 @@ services:
     env_file:
       - .env
     entrypoint: ["streamlit", "run", "app.py", "--server.address=0.0.0.0"]
+
+  api:
+    build: .
+    container_name: lhdn-reconciler-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./samples:/app/samples:ro
+      - ./output:/app/output
+    env_file:
+      - .env
+    entrypoint: ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
