@@ -1,10 +1,14 @@
-"""HTTP routes for the reconciliation API (v1)."""
+"""HTTP routes for the reconciliation API (v1). All routes require a tenant key."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import Response
+import os
 
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from fastapi.responses import Response
+from pydantic import BaseModel
+
+from src.api.auth import create_tenant, get_current_tenant, get_session
 from src.api.repository import RunRepository
 from src.api.schemas import (
     BucketCounts,
@@ -14,7 +18,7 @@ from src.api.schemas import (
 )
 from src.api.service import InputValidationError, run_reconciliation, to_record
 
-API_VERSION = "1.0.0"
+API_VERSION = "1.1.0"
 
 router = APIRouter(prefix="/api/v1")
 
@@ -23,6 +27,29 @@ def get_store() -> RunRepository:
     from src.api.app import get_repository
 
     return get_repository()
+
+
+class TenantCreate(BaseModel):
+    name: str
+
+
+class TenantCreated(BaseModel):
+    tenant_id: str
+    name: str
+    api_key: str
+
+
+class RunListItem(BaseModel):
+    run_id: str
+    created_at: str | None
+    status: str
+    buckets: dict
+
+
+class RunEventItem(BaseModel):
+    event_type: str
+    detail: str = ""
+    created_at: str | None = None
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -39,6 +66,7 @@ async def reconcile_endpoint(
     sst_tolerance: float = Form(default=0.05),
     ai_narratives: bool = Form(default=False),
     store: RunRepository = Depends(get_store),
+    tenant=Depends(get_current_tenant),
 ) -> ReconcileResponse:
     """Run the full pipeline; returns the run record + workbook URL."""
     for label, upload, suffixes in (("gl_file", gl_file, (".csv",)),
@@ -59,7 +87,10 @@ async def reconcile_endpoint(
     except InputValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     record = to_record(result, workbook)
-    store.save(record)
+    store.save(record, tenant_id=tenant.id)
+    if hasattr(store, "log_event"):
+        store.log_event(record.run_id, tenant.id, "run_completed",
+                        f"matched={record.summary.get('matched')}")
     return ReconcileResponse(
         run_id=record.run_id,
         created_at=record.created_at,
@@ -70,9 +101,20 @@ async def reconcile_endpoint(
     )
 
 
+@router.get("/runs", response_model=list[RunListItem])
+def list_runs(limit: int = 50,
+              store: RunRepository = Depends(get_store),
+              tenant=Depends(get_current_tenant)):
+    if not hasattr(store, "list_runs"):
+        raise HTTPException(status_code=501, detail="Run listing needs the SQL store.")
+    return [RunListItem(**item) for item in store.list_runs(tenant.id, limit=limit)]
+
+
 @router.get("/runs/{run_id}", response_model=RunDetailResponse)
-def run_detail(run_id: str, store: RunRepository = Depends(get_store)) -> RunDetailResponse:
-    record = store.get(run_id)
+def run_detail(run_id: str,
+               store: RunRepository = Depends(get_store),
+               tenant=Depends(get_current_tenant)) -> RunDetailResponse:
+    record = store.get(run_id, tenant_id=tenant.id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
     return RunDetailResponse(
@@ -85,15 +127,43 @@ def run_detail(run_id: str, store: RunRepository = Depends(get_store)) -> RunDet
 
 
 @router.get("/runs/{run_id}/workbook")
-def run_workbook(run_id: str, store: RunRepository = Depends(get_store)) -> Response:
-    record = store.get(run_id)
+def run_workbook(run_id: str,
+                 store: RunRepository = Depends(get_store),
+                 tenant=Depends(get_current_tenant)) -> Response:
+    record = store.get(run_id, tenant_id=tenant.id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+    if hasattr(store, "log_event"):
+        store.log_event(record.run_id, tenant.id, "workbook_downloaded", "")
     return Response(
         content=record.workbook_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="reconciliation_{run_id}.xlsx"'},
     )
+
+
+@router.get("/runs/{run_id}/events", response_model=list[RunEventItem])
+def run_events(run_id: str,
+               store: RunRepository = Depends(get_store),
+               tenant=Depends(get_current_tenant)):
+    if hasattr(store, "get") and store.get(run_id, tenant_id=tenant.id) is None:
+        raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+    if not hasattr(store, "events"):
+        raise HTTPException(status_code=501, detail="Audit events need the SQL store.")
+    return [RunEventItem(**item) for item in store.events(run_id, tenant.id)]
+
+
+@router.post("/admin/tenants", response_model=TenantCreated, status_code=201)
+def admin_create_tenant(payload: TenantCreate,
+                        session=Depends(get_session),
+                        tenant=Depends(get_current_tenant),
+                        admin_key: str | None = Header(default=None, alias="X-Admin-Key")):
+    """Mint a tenant key. Needs a valid tenant key AND the ADMIN_KEY secret."""
+    expected = os.getenv("ADMIN_KEY", "")
+    if not expected or admin_key != expected:
+        raise HTTPException(status_code=403, detail="Admin access denied.")
+    tenant_id, raw_key = create_tenant(session, payload.name)
+    return TenantCreated(tenant_id=tenant_id, name=payload.name, api_key=raw_key)
 
 
 def health_root() -> HealthResponse:

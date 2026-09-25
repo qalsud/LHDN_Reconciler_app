@@ -40,14 +40,14 @@ class InMemoryRunRepository:
         self._runs: OrderedDict[str, RunRecord] = OrderedDict()
         self._lock = Lock()
 
-    def save(self, record: RunRecord) -> None:
+    def save(self, record: RunRecord, tenant_id: str = "") -> None:
         with self._lock:
             self._runs[record.run_id] = record
             self._runs.move_to_end(record.run_id)
             while len(self._runs) > self._max_runs:
                 self._runs.popitem(last=False)
 
-    def get(self, run_id: str) -> RunRecord | None:
+    def get(self, run_id: str, tenant_id: str | None = None) -> RunRecord | None:
         with self._lock:
             return self._runs.get(run_id)
 

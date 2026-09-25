@@ -32,9 +32,38 @@ services:
     container_name: lhdn-reconciler-api
     ports:
       - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - ./samples:/app/samples:ro
       - ./output:/app/output
+    environment:
+      DATABASE_URL: postgresql+psycopg://recon:recon-secret@db:5432/reconciler
     env_file:
       - .env
     entrypoint: ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  db:
+    image: postgres:16-alpine
+    container_name: lhdn-reconciler-db
+    environment:
+      POSTGRES_USER: recon
+      POSTGRES_PASSWORD: recon-secret
+      POSTGRES_DB: reconciler
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U recon -d reconciler"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  dbdata:

@@ -135,10 +135,51 @@ curl http://localhost:8000/api/v1/runs/<run_id>
 curl -OJ http://localhost:8000/api/v1/runs/<run_id>/workbook
 ```
 
-Notes: runs live in a bounded in-memory store (100 latest; Postgres lands
-in the persistence phase — service code depends only on the
-`RunRepository` protocol). No auth yet; that ships with multi-tenancy.
-`ai_narratives=true` uses the configured LLM key, off by default.
+Notes: `ai_narratives=true` uses the configured LLM key, off by default.
+
+## Production operations (auth, persistence, audit, deploy)
+
+**Auth + multi-tenancy.** Every `/api/v1` route needs `X-API-Key`.
+Keys are per-company tenants, SHA-256 hashed at rest; runs are strictly
+isolated (a tenant that guesses another run_id gets 404). Bootstrap:
+
+```bash
+# .env
+TENANT_SEED=acme:lhdn_paste-a-long-random-key
+ADMIN_KEY=another-long-random-secret   # enables POST /api/v1/admin/tenants
+```
+
+```bash
+curl -X POST http://localhost:8000/api/v1/admin/tenants \
+  -H "X-API-Key: <seed-key>" -H "X-Admin-Key: <admin-key>" \
+  -H "Content-Type: application/json" -d '{"name":"new-co"}'
+# -> {"tenant_id": "...", "api_key": "..."}  (raw key shows ONCE)
+```
+
+**Persistence.** `DATABASE_URL` selects SQLite (`./data/app.db`, default)
+or Postgres (`postgresql+psycopg://...`). Same `RunRepository` seam either
+way. Compose ships Postgres with a health-gated API:
+
+```bash
+docker compose up --build db api
+```
+
+**Audit trail.** Every run logs `run_completed`; every workbook fetch logs
+`workbook_downloaded`. Read them per run:
+
+```bash
+curl -H "X-API-Key: <key>" http://localhost:8000/api/v1/runs/<run_id>/events
+```
+
+**Reliability.** Request IDs (`X-Request-ID` echoed + in logs), 120
+req/min per-key rate limiting (429 + JSON body), 25 MiB upload cap,
+traceback-free 500s, CORS scoped to the UI origin.
+
+**Backups.** Postgres volume is `dbdata`; snapshot with
+`docker compose exec db pg_dump -U recon reconciler > backup.sql`.
+
+**Website.** The API serves a static landing page at `/`
+(`src/api/static/index.html`) linking the docs and the Streamlit app.
 
 ## UI walkthrough (`streamlit run app.py`)
 

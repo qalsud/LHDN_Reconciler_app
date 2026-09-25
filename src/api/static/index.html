@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LHDN Reconciler — GL vs MyInvois audit automation</title>
+<style>
+  :root { --ink: #14213d; --accent: #1f6feb; --muted: #5b6472; --bg: #f6f8fb; --card: #ffffff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--ink); background: var(--bg); }
+  header { background: var(--ink); color: #fff; padding: 56px 24px 48px; text-align: center; }
+  header h1 { margin: 0 0 12px; font-size: 2.1rem; }
+  header p { margin: 0 auto 24px; max-width: 640px; color: #c9d4e3; font-size: 1.05rem; }
+  .cta a { display: inline-block; margin: 4px 6px; padding: 12px 22px; border-radius: 8px; text-decoration: none; font-weight: 600; }
+  .cta .primary { background: var(--accent); color: #fff; }
+  .cta .ghost { border: 1px solid #8fa3bd; color: #dbe5f2; }
+  main { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .card { background: var(--card); border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(20,33,61,.08); }
+  .card h3 { margin: 0 0 8px; font-size: 1.05rem; }
+  .card p { margin: 0; color: var(--muted); font-size: .93rem; line-height: 1.5; }
+  pre { background: #0d1526; color: #d7e3f4; padding: 18px; border-radius: 10px; overflow-x: auto; font-size: .85rem; }
+  h2 { margin-top: 40px; }
+  footer { text-align: center; color: var(--muted); padding: 24px; font-size: .85rem; }
+  code { background: #e9edf3; padding: 1px 6px; border-radius: 5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🧾 LHDN Reconciler</h1>
+  <p>Reconcile your General Ledger against LHDN MyInvois submissions.
+     Four audit buckets, anomaly scores, AI narratives, one Excel pack.</p>
+  <div class="cta">
+    <a class="primary" href="/docs">API docs</a>
+    <a class="ghost" href="http://localhost:8501">Open the web app</a>
+  </div>
+</header>
+<main>
+  <h2>What it does</h2>
+  <div class="grid">
+    <div class="card"><h3>✅ Matched</h3><p>TIN + reference agree, SST and totals within tolerance. No action.</p></div>
+    <div class="card"><h3>⚠️ Unsubmitted sales</h3><p>In the ledger, absent from MyInvois. Submit urgently.</p></div>
+    <div class="card"><h3>🟡 SST mismatches</h3><p>Counterpart found but tax differs. Recompute, credit/debit note.</p></div>
+    <div class="card"><h3>🔴 Missing UUID</h3><p>Submitted under a different reference, or LHDN-only. Link the UUID.</p></div>
+  </div>
+  <h2>Use the API</h2>
+  <pre>curl http://localhost:8000/health
+
+curl -X POST http://localhost:8000/api/v1/reconcile \
+  -H "X-API-Key: &lt;your-key&gt;" \
+  -F gl_file=@gl.csv -F lhdn_file=@lhdn.json
+
+curl -H "X-API-Key: &lt;your-key&gt;" \
+  http://localhost:8000/api/v1/runs/&lt;run_id&gt;/workbook -OJ</pre>
+  <h2>Operate it</h2>
+  <div class="grid">
+    <div class="card"><h3>🔑 Multi-tenant keys</h3><p>Per-company API keys, SHA-256 hashed. Runs are isolated per tenant with a full event audit trail.</p></div>
+    <div class="card"><h3>💾 Postgres + SQLite</h3><p>SQLite file for local dev, Postgres in production. Same repository seam.</p></div>
+    <div class="card"><h3>🤖 Hybrid AI</h3><p>Deterministic Pandas matching; AI only maps schemas, reads PDFs and narrates variances.</p></div>
+  </div>
+</main>
+<footer>LHDN Reconciler · GL vs MyInvois audit automation · API v1.1</footer>
+</body>
+</html>
