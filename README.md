@@ -183,7 +183,9 @@ traceback-free 500s, CORS scoped to the UI origin.
 
 ## UI walkthrough (`streamlit run app.py`)
 
-Four pages, one workflow:
+Four pages, one workflow (all through the API — start it first,
+paste a tenant key in the sidebar; UI runs inherit tenant isolation,
+audit and rate limits):
 
 1. **🧾 Upload & Run** — inputs, tolerances, AI-narrative toggle, Run.
    Results land in session state for the other pages.

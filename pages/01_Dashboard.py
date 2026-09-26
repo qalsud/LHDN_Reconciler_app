@@ -7,26 +7,25 @@ import plotly.express as px
 import streamlit as st
 
 from src.reports.tables import display_frame
-from src.ui.store import get_result
+from src.ui.store import get_frames, get_summary
 
 st.set_page_config(page_title="Reconciliation — Dashboard", page_icon="📊", layout="wide")
 st.title("📊 Dashboard")
 st.caption("Step 2 of 4 — portfolio view. Drill into rows in the Exceptions inbox.")
 
-result = get_result(st.session_state)
-if result is None:
+s = get_summary(st.session_state)
+buckets = get_frames(st.session_state)
+if s is None or buckets is None:
     st.info("Run a reconciliation on the Upload page first.")
     st.page_link("app.py", label="Go to Upload & Run", icon="🧾")
     st.stop()
-
-s = result.summary
-buckets = result.buckets()
+unsubmitted = s.get("unsubmitted_sales", s.get("unsubmitted", 0))
 
 m1, m2, m3, m4, m5, m6 = st.columns(6)
 m1.metric("GL records", s["gl_total"])
 m2.metric("LHDN documents", s["lhdn_total"])
 m3.metric("Matched", s["matched"])
-m4.metric("Unsubmitted sales", s["unsubmitted_sales"])
+m4.metric("Unsubmitted sales", unsubmitted)
 m5.metric("SST mismatches", s["sst_rate_mismatch"])
 m6.metric("Missing UUID", s["missing_uuid"])
 
@@ -34,7 +33,7 @@ left, right = st.columns(2)
 with left:
     mix = pd.DataFrame({
         "Bucket": ["Matched", "Unsubmitted_Sales", "SST_Rate_Mismatch", "Missing_UUID"],
-        "Records": [s["matched"], s["unsubmitted_sales"],
+        "Records": [s["matched"], unsubmitted,
                     s["sst_rate_mismatch"], s["missing_uuid"]],
     })
     st.plotly_chart(

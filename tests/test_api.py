@@ -139,6 +139,21 @@ def test_unknown_run_404(authed):
     client, headers, _ = authed
     assert client.get("/api/v1/runs/doesnotexist", headers=headers).status_code == 404
     assert client.get("/api/v1/runs/doesnotexist/workbook", headers=headers).status_code == 404
+    assert client.get("/api/v1/runs/doesnotexist/buckets", headers=headers).status_code == 404
+    assert client.get("/api/v1/runs/doesnotexist/events", headers=headers).status_code == 404
+
+
+def test_run_buckets_full_rows(authed):
+    client, headers, _ = authed
+    run_id = client.post("/api/v1/reconcile", files=_files(), headers=headers).json()["run_id"]
+    response = client.get(f"/api/v1/runs/{run_id}/buckets", headers=headers)
+    assert response.status_code == 200
+    buckets = response.json()["buckets"]
+    assert set(buckets) == {"Matched", "Unsubmitted_Sales", "SST_Rate_Mismatch", "Missing_UUID"}
+    assert len(buckets["Matched"]) == 6
+    assert len(buckets["Unsubmitted_Sales"]) == 3
+    assert "anomaly_score" in buckets["Matched"][0]
+    assert "ai_narrative" in buckets["Matched"][0]
 
 
 def test_admin_provisioning_guarded(authed, monkeypatch):

@@ -8,7 +8,8 @@ from src.reports.tables import display_frame, style_bucket
 from src.ui.store import (
     EXCEPTION_BUCKETS,
     exceptions_frame,
-    get_result,
+    get_frames,
+    get_summary,
     load_reviews,
     mark_pending,
     mark_reviewed,
@@ -23,14 +24,14 @@ st.title("📥 Exceptions inbox")
 st.caption("Step 3 of 4 — work every exception. Decisions persist to "
            "`output/reviews.json` and flow into Exports.")
 
-result = get_result(st.session_state)
-if result is None:
+buckets = get_frames(st.session_state)
+if buckets is None:
     st.info("Run a reconciliation on the Upload page first.")
     st.page_link("app.py", label="Go to Upload & Run", icon="🧾")
     st.stop()
 
 reviews = load_reviews()
-inbox = exceptions_frame(result.buckets())
+inbox = exceptions_frame(buckets)
 if inbox.empty:
     st.success("No exceptions — everything matched.")
     st.stop()

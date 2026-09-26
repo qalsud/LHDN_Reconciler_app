@@ -22,6 +22,7 @@ class RunRecord:
     bucket_counts: dict[str, int]
     workbook_bytes: bytes
     buckets_preview: dict[str, list[dict]] = field(default_factory=dict)
+    buckets_full: dict[str, list[dict]] = field(default_factory=dict)
 
 
 class RunRepository(Protocol):
