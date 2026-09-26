@@ -30,7 +30,22 @@ def store_result(session: dict, result) -> None:
 
 
 def has_result(session: dict) -> bool:
-    return session.get("result") is not None
+    return session.get("result") is not None or session.get("run") is not None
+
+
+def store_frames(session: dict, frames: dict) -> None:
+    session["frames"] = frames
+
+
+def get_frames(session: dict) -> dict | None:
+    return session.get("frames")
+
+
+def get_summary(session: dict) -> dict | None:
+    if session.get("run"):
+        return session["run"].get("summary")
+    result = session.get("result")
+    return result.summary if result is not None else None
 
 
 def row_key(bucket: str, row: pd.Series | dict) -> str:

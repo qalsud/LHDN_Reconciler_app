@@ -1,68 +1,32 @@
-"""Upload & Run — entry page of the reconciliation workflow app.
-
-Flow: Upload -> Dashboard -> Exceptions inbox -> Exports.
-Run with:  streamlit run app.py
-"""
+"""Upload & Run — entry page. Submits to the API (auth required)."""
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-
 import streamlit as st
 
-from src.ai.auditor import attach_narratives
 from src.config.settings import settings
-from src.engine.anomaly import score_by_reference
-from src.engine.reconciler import ReconcileConfig, ReconcileResult, reconcile
-from src.parsers.gl_parser import GLParseError, parse_gl_csv
-from src.parsers.lhdn_parser import LHDNParseError, parse_lhdn_json
-from src.ui.store import has_result, store_result
+from src.ui.api_client import (ApiClientError, api_base_url, check_health,
+                               fetch_buckets, submit_reconciliation)
+from src.ui.store import has_result, store_frames
 
 st.set_page_config(page_title="Reconciliation — Upload", page_icon="🧾", layout="wide")
 st.title("🧾 Upload & Run")
-st.caption("Step 1 of 4 — load inputs, reconcile, then work the Dashboard, "
-           "Exceptions inbox and Exports pages in the sidebar.")
-
-
-def _save_upload(uploaded, suffix: str) -> Path:
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-    try:
-        tmp.write(uploaded.getvalue())
-    finally:
-        tmp.close()
-    return Path(tmp.name)
-
-
-def _enrich(result: ReconcileResult, gl_df, want_narratives: bool) -> ReconcileResult:
-    scores = score_by_reference(gl_df)
-    scored = {}
-    for name, frame in result.buckets().items():
-        enriched = frame.copy()
-        enriched["anomaly_score"] = (
-            enriched["invoice_reference_gl"].astype(str).str.strip().str.upper().map(scores)
-        )
-        scored[name] = enriched
-    result = ReconcileResult(
-        matched=scored["Matched"],
-        unsubmitted_sales=scored["Unsubmitted_Sales"],
-        sst_rate_mismatch=scored["SST_Rate_Mismatch"],
-        missing_uuid=scored["Missing_UUID"],
-        summary=result.summary,
-    )
-    if want_narratives:
-        narrated = attach_narratives(result.buckets(), enabled=True)
-        result = ReconcileResult(
-            matched=narrated["Matched"],
-            unsubmitted_sales=narrated["Unsubmitted_Sales"],
-            sst_rate_mismatch=narrated["SST_Rate_Mismatch"],
-            missing_uuid=narrated["Missing_UUID"],
-            summary=result.summary,
-        )
-    return result
-
+st.caption("Step 1 of 4 — runs through the API, so tenant isolation, audit "
+           "and rate limits apply to UI runs too.")
 
 with st.sidebar:
+    st.header("API connection")
+    base_url = st.text_input("API base URL", value=api_base_url())
+    api_key = st.text_input("Tenant API key", value=st.session_state.get("api_key", ""),
+                            type="password",
+                            help="Mint one via POST /api/v1/admin/tenants.")
+    try:
+        health = check_health(base_url)
+        st.success(f"API v{health.get('version')} reachable")
+    except ApiClientError as exc:
+        st.error(str(exc))
+        st.stop()
+
     st.header("Inputs")
     use_samples = st.checkbox("Use bundled sample files", value=True)
     gl_file = st.file_uploader("General Ledger CSV", type=["csv"], disabled=use_samples)
@@ -77,44 +41,44 @@ with st.sidebar:
 
     st.header("Intelligence")
     want_narratives = st.checkbox(
-        "Generate AI narratives (needs LLM API key)",
+        "Generate AI narratives (needs LLM API key server-side)",
         value=False,
-        help="2-sentence audit summaries for Mismatch / high-anomaly rows.",
     )
 
 if st.button("Run reconciliation", type="primary", width="stretch"):
-    cfg = ReconcileConfig(date_tolerance_days=date_tol,
-                          amount_tolerance_rm=amount_tol,
-                          sst_tolerance_rm=sst_tol)
+    st.session_state["api_key"] = api_key
+    st.session_state["base_url"] = base_url
     if use_samples:
-        gl_path, lhdn_path = Path("samples/gl_sample.csv"), Path("samples/lhdn_sample.json")
+        gl_bytes = open("samples/gl_sample.csv", "rb").read()
+        lhdn_bytes = open("samples/lhdn_sample.json", "rb").read()
+        gl_name, lhdn_name = "gl_sample.csv", "lhdn_sample.json"
     elif gl_file is None or lhdn_file is None:
         st.warning("Upload both a GL CSV and an LHDN JSON file, or tick sample mode.")
         st.stop()
     else:
-        gl_path, lhdn_path = _save_upload(gl_file, ".csv"), _save_upload(lhdn_file, ".json")
+        gl_bytes, lhdn_bytes = gl_file.getvalue(), lhdn_file.getvalue()
+        gl_name, lhdn_name = gl_file.name, lhdn_file.name
 
-    try:
-        gl_df = parse_gl_csv(gl_path)
-        lhdn_df = parse_lhdn_json(lhdn_path)
-    except (GLParseError, LHDNParseError) as exc:
-        st.error(f"Input parsing failed: {exc}")
-        st.stop()
-
-    with st.spinner("Reconciling and scoring…"):
+    with st.spinner("Reconciling via API…"):
         try:
-            result = reconcile(gl_df, lhdn_df, cfg)
-            result = _enrich(result, gl_df, want_narratives)
-        except ValueError as exc:
-            st.error(f"Reconciliation failed: {exc}")
+            run = submit_reconciliation(
+                gl_bytes, gl_name, lhdn_bytes, lhdn_name, api_key,
+                date_tolerance=date_tol, amount_tolerance=amount_tol,
+                sst_tolerance=sst_tol, ai_narratives=want_narratives,
+                base_url=base_url)
+            frames = fetch_buckets(run["run_id"], api_key, base_url=base_url)
+        except ApiClientError as exc:
+            st.error(str(exc))
             st.stop()
-    store_result(st.session_state, result)
+    st.session_state["run"] = run
+    store_frames(st.session_state, frames)
 
-if has_result(st.session_state):
-    s = st.session_state["result"].summary
+if has_result(st.session_state) and st.session_state.get("run"):
+    s = st.session_state["run"]["summary"]
     st.success(
-        f"Reconciled {s['gl_total']} GL × {s['lhdn_total']} LHDN → "
-        f"Matched={s['matched']} · Unsubmitted={s['unsubmitted_sales']} · "
+        f"Run {st.session_state['run']['run_id'][:8]}… — "
+        f"{s['gl_total']} GL × {s['lhdn_total']} LHDN → "
+        f"Matched={s['matched']} · Unsubmitted={s.get('unsubmitted_sales', s.get('unsubmitted'))} · "
         f"SST mismatch={s['sst_rate_mismatch']} · Missing UUID={s['missing_uuid']}"
     )
     st.page_link("pages/01_Dashboard.py", label="Next: open the Dashboard", icon="📊")

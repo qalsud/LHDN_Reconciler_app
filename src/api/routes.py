@@ -142,6 +142,11 @@ def run_workbook(run_id: str,
     )
 
 
+class RunBucketsResponse(BaseModel):
+    run_id: str
+    buckets: dict[str, list[dict]]
+
+
 @router.get("/runs/{run_id}/events", response_model=list[RunEventItem])
 def run_events(run_id: str,
                store: RunRepository = Depends(get_store),
@@ -151,6 +156,17 @@ def run_events(run_id: str,
     if not hasattr(store, "events"):
         raise HTTPException(status_code=501, detail="Audit events need the SQL store.")
     return [RunEventItem(**item) for item in store.events(run_id, tenant.id)]
+
+
+@router.get("/runs/{run_id}/buckets", response_model=RunBucketsResponse)
+def run_buckets(run_id: str,
+                store: RunRepository = Depends(get_store),
+                tenant=Depends(get_current_tenant)):
+    """Full bucket rows for UI clients (tenant-scoped)."""
+    record = store.get(run_id, tenant_id=tenant.id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+    return RunBucketsResponse(run_id=record.run_id, buckets=record.buckets_full)
 
 
 @router.post("/admin/tenants", response_model=TenantCreated, status_code=201)

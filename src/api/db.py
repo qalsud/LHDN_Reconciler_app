@@ -53,6 +53,7 @@ class Run(Base):
     summary_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     counts_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     preview_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    full_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     workbook: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
 
 

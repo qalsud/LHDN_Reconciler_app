@@ -71,8 +71,8 @@ def test_validate_invoice_fields_missing_and_bad():
 
 
 def test_extract_invoice_fields_requires_key(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    for var in ("OPENAI_API_KEY", "XAI_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
     with pytest.raises(VisionExtractionError, match="API key"):
         extract_invoice_fields(["abc"], api_key=None)
 
@@ -99,7 +99,7 @@ def test_extract_invoice_fields_mocked_model(monkeypatch):
         completions = _Completions()
 
     class _Client:
-        def __init__(self, api_key=None):
+        def __init__(self, api_key=None, base_url=None):
             self.chat = _Chat()
 
     monkeypatch.setattr("openai.OpenAI", _Client)

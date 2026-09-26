@@ -25,8 +25,16 @@ def record_to_row(record: RunRecord, tenant_id: str) -> Run:
         summary_json=json.dumps(record.summary),
         counts_json=json.dumps(record.bucket_counts),
         preview_json=json.dumps(record.buckets_preview),
+        full_json=json.dumps(record.buckets_full),
         workbook=record.workbook_bytes,
     )
+
+
+def _loads(raw: str | None) -> dict:
+    try:
+        return json.loads(raw or "{}")
+    except ValueError:
+        return {}
 
 
 def row_to_record(row: Run) -> RunRecord:
@@ -34,13 +42,16 @@ def row_to_record(row: Run) -> RunRecord:
     if created is not None and created.tzinfo is None:
         from datetime import timezone
         created = created.replace(tzinfo=timezone.utc)
+    full = _loads(getattr(row, "full_json", None))
+    preview = _loads(row.preview_json)
     return RunRecord(
         run_id=row.id,
         created_at=created or utcnow(),
-        summary=json.loads(row.summary_json or "{}"),
-        bucket_counts=json.loads(row.counts_json or "{}"),
+        summary=_loads(row.summary_json),
+        bucket_counts=_loads(row.counts_json),
         workbook_bytes=row.workbook or b"",
-        buckets_preview=json.loads(row.preview_json or "{}"),
+        buckets_preview=preview or {name: rows[:5] for name, rows in full.items()},
+        buckets_full=full,
     )
 
 

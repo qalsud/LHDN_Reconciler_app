@@ -91,16 +91,6 @@ def _enrich(result: ReconcileResult, gl_df: pd.DataFrame, ai_narratives: bool) -
     return result
 
 
-def _preview_frame(frame: pd.DataFrame, n: int = PREVIEW_ROWS) -> list[dict]:
-    if frame.empty:
-        return []
-    preview = frame.head(n).copy()
-    for col in ("transaction_date", "invoice_date_lhdn"):
-        if col in preview.columns:
-            preview[col] = pd.to_datetime(preview[col], errors="coerce").dt.strftime("%Y-%m-%d")
-    return preview.fillna("").to_dict(orient="records")
-
-
 def run_reconciliation(
     gl_bytes: bytes,
     lhdn_bytes: bytes,
@@ -136,13 +126,25 @@ def run_reconciliation(
     return result, workbook
 
 
+def _full_frame(frame: pd.DataFrame) -> list[dict]:
+    if frame.empty:
+        return []
+    full = frame.copy()
+    for col in ("transaction_date", "invoice_date_lhdn"):
+        if col in full.columns:
+            full[col] = pd.to_datetime(full[col], errors="coerce").dt.strftime("%Y-%m-%d")
+    return full.fillna("").to_dict(orient="records")
+
+
 def to_record(result: ReconcileResult, workbook: bytes) -> RunRecord:
     buckets = result.buckets()
+    full = {name: _full_frame(buckets[name]) for name in BUCKET_FIELDS}
     return RunRecord(
         run_id=uuid.uuid4().hex,
         created_at=utcnow(),
         summary=result.summary,
         bucket_counts={name: len(buckets[name]) for name in BUCKET_FIELDS},
         workbook_bytes=workbook,
-        buckets_preview={name: _preview_frame(buckets[name]) for name in BUCKET_FIELDS},
+        buckets_preview={name: rows[:PREVIEW_ROWS] for name, rows in full.items()},
+        buckets_full=full,
     )

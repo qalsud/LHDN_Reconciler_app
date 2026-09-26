@@ -1,40 +1,41 @@
-"""Exports — workbook / CSV downloads plus the review log."""
+"""Exports — workbook / CSV downloads plus the review log (all via the API)."""
 
 from __future__ import annotations
 
 import streamlit as st
 
-from src.config.settings import settings
-from src.reports.excel import export_workbook
-from src.ui.store import exceptions_frame, get_result, load_reviews, review_status, row_key
+from src.ui.api_client import ApiClientError, download_workbook
+from src.ui.store import exceptions_frame, get_frames, load_reviews, review_status, row_key
 
 st.set_page_config(page_title="Reconciliation — Exports", page_icon="📤", layout="wide")
 st.title("📤 Exports")
 st.caption("Step 4 of 4 — download the audit pack.")
 
-result = get_result(st.session_state)
-if result is None:
+run = st.session_state.get("run")
+buckets = get_frames(st.session_state)
+api_key = st.session_state.get("api_key", "")
+base_url = st.session_state.get("base_url", "http://localhost:8000")
+if run is None or buckets is None or not api_key:
     st.info("Run a reconciliation on the Upload page first.")
     st.page_link("app.py", label="Go to Upload & Run", icon="🧾")
     st.stop()
 
 try:
-    out_path = export_workbook(result, settings.output_path)
-except OSError as exc:
-    st.error(f"Export failed: {exc}")
+    content = download_workbook(run["run_id"], api_key, base_url=base_url)
+except ApiClientError as exc:
+    st.error(str(exc))
     st.stop()
 
 st.download_button(
     label="⬇️ Excel workbook (5 sheets)",
-    data=out_path.read_bytes(),
-    file_name=out_path.name,
+    data=content,
+    file_name=f"reconciliation_{run['run_id'][:8]}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     width="stretch",
 )
-st.caption(f"Also saved to `{out_path}`.")
 
 reviews = load_reviews()
-inbox = exceptions_frame(result.buckets())
+inbox = exceptions_frame(buckets)
 if not inbox.empty:
     annotated = inbox.copy()
     annotated["review_status"] = [
