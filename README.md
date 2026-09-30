@@ -224,7 +224,6 @@ python main.py --gl-path ./my_gl.csv --lhdn-path ./my_lhdn.json --output output/
 Exit codes: `0` success · `2` input parse error · `3` reconciliation error · `4` export error.
 
 ## Hybrid AI layer (Phases 1–4)
-
 **Phase 1 — deterministic core.** `src/engine/matcher.py` owns the 2-pass
 algorithm (`Pass1_Exact`, `Pass2_Fuzzy`); `reconciler.py` is a thin façade so
 the CLI/UI/Excel keep working. `samples/generate_mocks.py` builds seeded mock
@@ -258,6 +257,29 @@ columns ship in the Excel workbook and the UI.
 
 > Design rule: the LLM never does arithmetic. Pandas matches, sklearn scores,
 > AI only maps schemas, reads PDFs, and narrates.
+
+## Live MyInvois pull (Phase A)
+
+`src/parsers/lhdn_api.py` pulls submissions straight from LHDN instead of
+a JSON file — OAuth2 client-credentials login (1 h token cache), paged
+`documents/recent` search (Sent/Received, 31-day window), per-document
+details for tax figures, `Retry-After`-aware 429 handling, one-shot
+401 re-login. `src/parsers/ubl.py` extracts the same fields from UBL
+document sources (verified against LHDN's official v1.1 sample payload).
+
+```bash
+# .env — credentials self-provision in the MyInvois Portal ("View and Register ERP");
+# sandbox and production credentials differ.
+MYINVOIS_ENV=preprod
+MYINVOIS_CLIENT_ID=...
+MYINVOIS_CLIENT_SECRET=...
+
+python main.py --gl-path samples/gl_sample.csv --lhdn-source api --lhdn-direction Sent
+```
+
+Sandbox endpoints (`sdk.myinvois.hasil.gov.my` FAQ): identity + API at
+`preprod-api.myinvois.hasil.gov.my`; production at `api.myinvois.hasil.gov.my`.
+TINs are normalised per LHDN rules (strip leading zeros, pad trailing zero).
 
 ## Input formats
 

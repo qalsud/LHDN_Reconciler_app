@@ -38,7 +38,8 @@ _TIN_KEYS = ("tin", "suppliertin", "issuertin", "receivertin", "taxid")
 _DATE_KEYS = ("invoicedate", "issueddate", "datetimeissued", "date")
 _REF_KEYS = ("invoicereference", "invoiceref", "invoiceno", "idnumber", "reference", "internalid")
 _SST_KEYS = ("sstamount", "taxamount", "totaltax", "sst")
-_TOTAL_KEYS = ("totalamount", "grandtotal", "totalpayable", "totalpayableamount", "invoicetotal", "total")
+_TOTAL_KEYS = ("totalamount", "grandtotal", "totalpayable", "totalpayableamount", "invoicetotal",
+               "netamount", "total")
 
 
 class LHDNParseError(ValueError):

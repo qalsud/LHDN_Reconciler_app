@@ -22,7 +22,15 @@ def build_parser() -> argparse.ArgumentParser:
         description="Reconcile General Ledger sales against LHDN MyInvois submissions.",
     )
     p.add_argument("--gl-path", default=str(settings.gl_path), help="Path to GL CSV file.")
-    p.add_argument("--lhdn-path", default=str(settings.lhdn_path), help="Path to LHDN JSON export.")
+    p.add_argument("--lhdn-path", default=str(settings.lhdn_path),
+                   help="Path to LHDN JSON export (ignored with --lhdn-source api).")
+    p.add_argument("--lhdn-source", choices=["file", "api"], default="file",
+                   help="Read LHDN data from a JSON file or pull live from MyInvois "
+                        "(needs MYINVOIS_CLIENT_ID/SECRET; sandbox by default).")
+    p.add_argument("--lhdn-direction", default="Sent",
+                   help="MyInvois pull direction: Sent or Received (api source only).")
+    p.add_argument("--lhdn-max-docs", type=int, default=200,
+                   help="Max documents to pull from MyInvois (api source only).")
     p.add_argument("--output", "-o", default=str(settings.output_path),
                    help="Output Excel workbook path.")
     p.add_argument("--date-tolerance", type=int, default=settings.date_tolerance_days,
@@ -64,10 +72,20 @@ def main(argv: list[str] | None = None) -> int:
     logger.add(sys.stderr, level=str(args.log_level).upper())
 
     logger.info("GL input: {}", args.gl_path)
-    logger.info("LHDN input: {}", args.lhdn_path)
+    logger.info("LHDN input: {} ({})", args.lhdn_path if args.lhdn_source == "file" else "MyInvois API",
+                args.lhdn_source)
     try:
         gl_df = parse_gl_csv(args.gl_path)
-        lhdn_df = parse_lhdn_json(args.lhdn_path)
+        if args.lhdn_source == "api":
+            from src.parsers.lhdn_api import MyInvoisError, pull_lhdn_df
+            try:
+                lhdn_df = pull_lhdn_df(direction=args.lhdn_direction,
+                                       max_docs=args.lhdn_max_docs)
+            except MyInvoisError as exc:
+                logger.error("MyInvois pull failed: {}", exc)
+                return 2
+        else:
+            lhdn_df = parse_lhdn_json(args.lhdn_path)
     except (GLParseError, LHDNParseError) as exc:
         logger.error("Input parsing failed: {}", exc)
         return 2
