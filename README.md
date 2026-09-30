@@ -1,5 +1,7 @@
 # LHDN MyInvois vs General Ledger — Financial Reconciliation Engine
 
+![ci](https://github.com/qalsud/LHDN_Reconciler_app/actions/workflows/ci.yml/badge.svg)
+
 Standalone, production-ready Python project that reconciles **General Ledger (GL) sales**
 against **LHDN MyInvois submissions** and produces a formatted, multi-tab Excel audit workbook.
 
