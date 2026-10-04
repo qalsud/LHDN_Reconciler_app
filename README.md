@@ -12,32 +12,45 @@ flowchart LR
     subgraph Inputs
         GL[GL CSV<br/>samples/gl_sample.csv]
         LHDN[LHDN JSON export<br/>samples/lhdn_sample.json]
+        LIVE[MyInvois API<br/>lhdn_api.py pull]
         PDF[Vendor PDF invoices]
-        MOCK[samples/generate_mocks.py]
+        MOCK[generate_mocks.py<br/>build_realdata.py]
     end
     subgraph Parsers["src/parsers + src/ai"]
         SEM[semantics.py<br/>MiniLM header mapping]
-        GP[gl_parser.py<br/>normalise headers, types]
-        LP[lhdn_parser.py<br/>unwrap documents, aliases]
-        VIS[vision.py<br/>PDF → base64 → gpt-4o JSON]
+        GP[gl_parser.py<br/>normalise + validate]
+        LP[lhdn_parser.py<br/>aliases + SST derivation]
+        UBL[ubl.py<br/>UBL source extraction]
+        VIS[vision.py<br/>PDF → vision-LLM JSON]
     end
     subgraph Engine["src/engine"]
         RC[matcher.py<br/>Pass 1 exact TIN+Ref<br/>Pass 2 fuzzy date±2d total±RM0.05]
         AN[anomaly.py<br/>IsolationForest 0-100]
     end
-    subgraph Reports["src/reports + src/ai"]
+    subgraph Service["src/api + src/reports + src/ai"]
+        API[FastAPI :8000<br/>auth + runs + audit]
+        DB[(SQLite / Postgres<br/>tenants · runs · events)]
         AU[auditor.py<br/>LLM narratives + fallback]
         XL[excel.py<br/>OpenPyXL workbook]
+    end
+    subgraph Clients
+        CLI[main.py CLI]
+        UI[Streamlit :8501<br/>Upload → Dashboard → Inbox → Exports]
+        EXT[External systems<br/>REST + webhooks]
     end
     MOCK --> GL & LHDN
     GL --> SEM --> GP --> RC
     LHDN --> LP --> RC
+    LIVE --> LP
     PDF --> VIS --> GP
-    RC --> AN --> AU --> XL
-    XL --> OUT[output/reconciliation_summary.xlsx<br/>Summary + 4 audit tabs + scores]
-    CFG[src/config/settings.py<br/>.env] -.-> SEM & GP & RC & AN & AU
-    CLI[main.py --gl-path --lhdn-path --ai-narratives] --> GP & LP
-    UI[app.py Streamlit UI] --> GP & LP & RC & AN & AU
+    UBL --> LP
+    RC --> AN --> API
+    API --> DB
+    API --> AU --> XL
+    CLI --> GP & LP & RC
+    UI --> API
+    EXT --> API
+    XL --> OUT[output/*.xlsx<br/>Summary + 4 audit tabs + scores]
 ```
 
 ## Matching rules
@@ -54,23 +67,49 @@ defaults 2 / 0.05 / 0.05) and also loadable from `.env`.
 ## Project layout
 
 ```
-├── main.py                  # CLI entry point (argparse, --ai-narratives)
-├── app.py                   # Streamlit UI (upload → reconcile → download)
+├── main.py                  # CLI (file or live MyInvois pull, --ai-narratives)
+├── app.py + pages/          # Streamlit workflow UI (API-backed, 4 pages)
 ├── src/
 │   ├── config/settings.py   # env-driven Settings (python-dotenv)
-│   ├── parsers/             # gl_parser.py (+AI auto-mapping), lhdn_parser.py
+│   ├── parsers/             # gl_parser.py, lhdn_parser.py, lhdn_api.py, ubl.py
 │   ├── ai/                  # semantics.py, vision.py, auditor.py
 │   ├── engine/              # matcher.py (2-pass core), reconciler.py (façade),
 │   │                        # anomaly.py (IsolationForest scoring)
+│   ├── api/                 # FastAPI service: auth, runs, audit, rate limits
+│   ├── ui/                  # Streamlit API client + review store
 │   └── reports/             # excel.py (workbook), tables.py (UI formatting)
-├── samples/                 # synthetic GL CSV + LHDN JSON (12 x 10 records)
-├── tests/                   # pytest suite (20 tests)
-├── output/                  # generated reconciliation_summary.xlsx
+├── samples/                 # synthetic (12×10) + real-data (60×53) fixtures
+├── tests/                   # pytest suite (109 tests, incl. live-pattern API tests)
+├── output/                  # generated workbooks (git-ignored)
+├── data/                    # local SQLite DB (git-ignored)
 ├── Dockerfile
-├── docker-compose.yml
+├── docker-compose.yml       # CLI + UI + API + Postgres
 ├── requirements.txt
 ├── pytest.ini
-└── .env.example
+├── .env.example
+└── .github/workflows/ci.yml
+```
+
+## 5-minute demo (reviewer path)
+
+```powershell
+pip install -r requirements.txt
+copy .env.example .env
+python -m pytest tests/ -q            # full suite, ~2 min
+python -m uvicorn src.api.app:app --port 8000 &
+# add TENANT_SEED=demo:<a-long-key> to .env, restart the API once
+python -m streamlit run app.py        # http://localhost:8501
+```
+
+Then in the UI: paste the tenant key → sample mode → Run →
+Dashboard → Exceptions inbox → Exports. Or skip the UI entirely:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/reconcile \
+  -H "X-API-Key: <key>" \
+  -F gl_file=@samples/realistic_gl.csv \
+  -F lhdn_file=@samples/realistic_lhdn.json
+# -> 44 matched / 8 unsubmitted / 5 SST mismatches / 4 missing UUID
 ```
 
 ## Quickstart
@@ -80,11 +119,15 @@ defaults 2 / 0.05 / 0.05) and also loadable from `.env`.
 ```powershell
 pip install -r requirements.txt
 copy .env.example .env
-streamlit run app.py
+# add TENANT_SEED=demo:<a-long-key> to .env
+python -m uvicorn src.api.app:app --port 8000 &
+python -m streamlit run app.py
 ```
 
-Then open http://localhost:8501 — tick **Use bundled sample files**, press
-**Run reconciliation**, inspect the four audit tabs, and download the workbook.
+Then open http://localhost:8501 — paste the tenant key in the sidebar,
+keep **Use bundled sample files** ticked, press **Run reconciliation**,
+and work through Dashboard → Exceptions inbox → Exports. (The UI calls
+the API for everything, so the key is required.)
 
 ### Option B — virtualenv CLI (Windows PowerShell)
 
@@ -210,16 +253,16 @@ python main.py --gl-path ./my_gl.csv --lhdn-path ./my_lhdn.json --output output/
 | Argument | Default (from `.env`) | Description |
 |---|---|---|
 | `--gl-path` | `samples/gl_sample.csv` | GL CSV file |
-| `--lhdn-path` | `samples/lhdn_sample.json` | LHDN JSON export |
+| `--lhdn-path` | `samples/lhdn_sample.json` | LHDN JSON export (file source only) |
+| `--lhdn-source` | `file` | `file` or `api` (live MyInvois pull) |
+| `--lhdn-direction` | `Sent` | Pull direction for api source |
+| `--lhdn-max-docs` | `200` | Max documents to pull |
 | `--output` / `-o` | `output/reconciliation_summary.xlsx` | Excel workbook destination |
 | `--date-tolerance` | `2` | Fuzzy date window (days) |
 | `--amount-tolerance` | `0.05` | Total-amount tolerance (RM) |
 | `--sst-tolerance` | `0.05` | SST-amount tolerance (RM) |
-| `--log-level` | `INFO` | Loguru level |
-
-| `--sst-tolerance` | `0.05` | SST-amount tolerance (RM) |
-| `--ai-narratives` | off | Generate LLM audit narratives (needs LLM API key; template fallback otherwise) |
-| `--log-level` | `INFO` | Loguru level |
+| `--ai-narratives` | off | LLM audit narratives (needs LLM key; template fallback) |
+| `--log-level` | `INFO` | Loguru log level |
 
 Exit codes: `0` success · `2` input parse error · `3` reconciliation error · `4` export error.
 
@@ -243,8 +286,9 @@ both `Bill_Date`-style and `Tarikh_Invois`-style headers.
 
 **Phase 3 — PDF vision ingestion.** `src/ai/vision.py` renders PDF pages to
 base64 PNGs (PyMuPDF) and extracts a strict JSON schema
-(`invoice_ref, txn_date, tin_number, tax_amount, total_amount`) via
-`gpt-4o` (fallback `gpt-4-vision-preview`), with tenacity retries.
+(`invoice_ref, txn_date, tin_number, tax_amount, total_amount`) via the
+configured vision model (Gemini through its OpenAI-compatible endpoint),
+with tenacity retries.
 `vision_rows_to_gl_df()` / `append_vision_rows()` feed results into the
 Phase 1 engine (subtotal derived as total − tax). Needs `OPENAI_API_KEY`.
 
